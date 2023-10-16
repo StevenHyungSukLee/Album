@@ -1,22 +1,22 @@
+import com.opencsv.CSVWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
-import org.apache.http.impl.client.HttpClients;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
-import java.io.File;
-import java.util.concurrent.Executors;
+import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Collections;
-import com.opencsv.CSVWriter;
-import java.io.FileWriter;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class Client2 {
   private static final int THREAD_COUNT = 10;
@@ -25,6 +25,7 @@ public class Client2 {
 
   public static void main(String[] args) {
     if (args.length != 4) {
+      System.out.println("put something !!!!!!");
       return;
     }
 
@@ -35,7 +36,7 @@ public class Client2 {
     int threadPoolSize = numThreadGroups * threadGroupSize; // Calculate the appropriate thread pool size
 
     ExecutorService executorService1 = Executors.newFixedThreadPool(threadPoolSize);
-    ExecutorService executorService2 = Executors.newFixedThreadPool(threadPoolSize);
+//    ExecutorService executorService2 = Executors.newFixedThreadPool(threadPoolSize);
 
     try {
 
@@ -44,10 +45,11 @@ public class Client2 {
 
       for (int group = 1; group <= numThreadGroups; group++) {
         executorService1.submit(() -> {
+          ExecutorService executorService2 = Executors.newFixedThreadPool(threadPoolSize);
           for (int i = 0; i < threadGroupSize; i++) {
             executorService2.submit(() -> {
               try {
-                for(int k = 0; k < 10; k++){
+                for(int k = 0; k < 1000; k++){
                   atomicInteger.addAndGet(performPostRequest(serverUri));
                   atomicInteger.addAndGet(performGetRequest(serverUri));
                 }
@@ -56,31 +58,32 @@ public class Client2 {
               }
             });
           }
-        });
-        executorService2.shutdown();
-        Thread.sleep(delay * 1000); // Convert delay from seconds to milliseconds
-        while (!executorService2.isTerminated()) {
-          try{
-            Thread.sleep(1000);
-          }catch(InterruptedException e){
-            e.printStackTrace();
+          executorService2.shutdown();
+          try {
+            Thread.sleep(delay * 1000); // Convert delay from seconds to milliseconds
+          } catch (InterruptedException e) {
+            throw new RuntimeException(e);
           }
-        }
+          while (!executorService2.isTerminated()) {
+//            try{
+//              Thread.sleep(1000);
+//            }catch(InterruptedException e){
+//              e.printStackTrace();
+//            }
+          }
+
+        });
       }
       System.out.println("checkpoint");
 
       executorService1.shutdown();
+      latch.await();
       while (!executorService1.isTerminated()) {
-        try{
-          Thread.sleep(1000);
-        }catch(InterruptedException e){
-          e.printStackTrace();
-        }
       }
       System.out.println("checkpoint2");
 
 //      System.out.println(atomicInteger);
-      latch.await(); // Waiting for all tasks to complete
+//      latch.await(); // Waiting for all tasks to complete
 
       long endTime = System.currentTimeMillis();
 
