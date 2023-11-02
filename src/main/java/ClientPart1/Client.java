@@ -2,6 +2,7 @@ package ClientPart1;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
@@ -39,11 +40,15 @@ public class Client {
       CountDownLatch latch = new CountDownLatch(threadPoolSize);
 
       for (int group = 1; group <= numThreadGroups; group++) {
+        int finalGroup = group;
         executorService1.submit(() -> {
           ExecutorService executorService2 = Executors.newFixedThreadPool(threadPoolSize);
           for (int i = 0; i < threadGroupSize; i++) {
+            int finalI = i;
             executorService2.submit(() -> {
               try {
+                System.out.println(finalGroup + "group" + finalI + "Thread Start");
+
                 HttpClient httpClient = HttpClients.createDefault();
                 for(int k = 0; k < 1000; k++){
                   atomicInteger.addAndGet(performPostRequest(serverUri, httpClient));
@@ -53,6 +58,8 @@ public class Client {
                 latch.countDown();
               }
             });
+            System.out.println(finalGroup + "group" + finalI + "Thread End");
+
           }
           executorService2.shutdown();
           try {
@@ -60,14 +67,21 @@ public class Client {
           } catch (InterruptedException e) {
             throw new RuntimeException(e);
           }
-          while (!executorService2.isTerminated()) {
+          try {
+            // Await the termination of executorService2 for a specified time
+            executorService2.awaitTermination(1, TimeUnit.MINUTES);
+          } catch (InterruptedException e) {
+            e.printStackTrace();
           }
         });
       }
-
       executorService1.shutdown();
       latch.await();
-      while (!executorService1.isTerminated()) {
+      try {
+        // Await the termination of executorService1 for a specified time
+        executorService1.awaitTermination(1, TimeUnit.MINUTES);
+      } catch (InterruptedException e) {
+        e.printStackTrace();
       }
 
 
@@ -86,54 +100,68 @@ public class Client {
 
   private static int performPostRequest(String serverUri, HttpClient httpClient) {
     int requestCount = 1; // Keep track of the number of requests
-    //create client here and do the same thing at you get request
-    HttpPost postRequest = new HttpPost(serverUri + "/albums");
-    // Configure the request if needed
-    try {
-      MultipartEntityBuilder builder = MultipartEntityBuilder.create();
-      File imageFile = new File("nmtb.png");
+    int retryAttempts = 0; // Counter for retry attempts
 
-      builder.addBinaryBody("image", imageFile);
-      builder.addTextBody("profile",
-          "{\"artist\":\"John Doe\",\"title\":\"Greatest Hits\",\"year\":\"2023\"}");
+    while (retryAttempts < 5) { // Retry up to 5 times
+      HttpPost postRequest = new HttpPost(serverUri + "/albums");
+      // Configure the request if needed
+      try {
+        MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+        File imageFile = new File("nmtb.png");
 
-      HttpEntity multipart = builder.build();
-      postRequest.setEntity(multipart);
-      HttpResponse response = httpClient.execute(postRequest);
-      int statusCode = response.getStatusLine().getStatusCode();
+        builder.addBinaryBody("image", imageFile);
+        builder.addTextBody("profile",
+            "{\"artist\":\"John Doe\",\"title\":\"Greatest Hits\",\"year\":\"2023\"}");
 
-      if (!(statusCode == 200 ||statusCode == 201)) {
-        requestCount++;
-        HttpEntity entity = response.getEntity();
-        if (entity != null) {
-          String result = EntityUtils.toString(entity);
+        HttpEntity multipart = builder.build();
+        postRequest.setEntity(multipart);
+        HttpResponse response = httpClient.execute(postRequest);
+        int statusCode = response.getStatusLine().getStatusCode();
+
+        if (statusCode == 200 || statusCode == 201) {
+          // If successful, exit the loop
+          break;
+        } else if (statusCode >= 400 && statusCode <= 599) {
+          // Increment retryAttempts if 4XX or 5XX response code
+          retryAttempts++;
+          requestCount++;
         }
-      }
 
-    } catch (Exception e) {
-      e.printStackTrace();
+      } catch (Exception e) {
+        e.printStackTrace();
+        retryAttempts++; // Increment retry attempts on exception
+      }
     }
     return requestCount;
-
   }
+
 
   private static int performGetRequest(String serverUri, HttpClient httpClient) {
     int requestCount = 1; // Keep track of the number of requests
+    int retryAttempts = 0; // Counter for retry attempts
 
-    HttpGet getRequest = new HttpGet(serverUri + "/albums/123");
-    // Configure the request if needed
-    try {
-      HttpResponse response = httpClient.execute(getRequest);
-      int statusCode = response.getStatusLine().getStatusCode();
+    while (retryAttempts < 5) { // Retry up to 5 times
+      HttpGet getRequest = new HttpGet(serverUri + "/albums/123");
+      // Configure the request if needed
+      try {
+        HttpResponse response = httpClient.execute(getRequest);
+        int statusCode = response.getStatusLine().getStatusCode();
 
-      if (!(statusCode == 200 ||statusCode == 201)) {
-        HttpEntity entity = response.getEntity();
-        requestCount++;
+        if (statusCode == 200 || statusCode == 201) {
+          // If successful, exit the loop
+          break;
+        } else if (statusCode >= 400 && statusCode <= 599) {
+          // Increment retryAttempts if 4XX or 5XX response code
+          retryAttempts++;
+          requestCount++;
+        }
+
+      } catch (Exception e) {
+        e.printStackTrace();
+        retryAttempts++; // Increment retry attempts on exception
       }
-    } catch (Exception e) {
-      e.printStackTrace();
     }
     return requestCount;
-
   }
+
 }
